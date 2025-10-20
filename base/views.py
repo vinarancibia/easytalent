@@ -620,7 +620,7 @@ def login_user(request):
         request, "login.html", {"initialize_database": initialize_database_condition()}
     )
     
-    
+
 def register_user(request):
     """
     Handles user registration and related Employee creation.
@@ -637,26 +637,26 @@ def register_user(request):
 
         # Basic validations
         if not email or not first_name or not phone or not company_name or not password1 or not password2:
-            messages.error(request, ("All required fields must be filled."))
+            messages.error(request, _("All required fields must be filled."))
             return redirect("register")
 
         if password1 != password2:
-            messages.error(request, ("Passwords do not match."))
+            messages.error(request, _("Passwords do not match."))
             return redirect("register")
 
         if len(password1) < 8:
-            messages.error(request, ("Password must be at least 8 characters long."))
+            messages.error(request, _("Password must be at least 8 characters long."))
             return redirect("register")
 
         # Uniqueness validations
         if User.objects.filter(username=email).exists():
-            messages.error(request, ("A user with this email already exists."))
+            messages.error(request, _("A user with this email already exists."))
             return redirect("register")
 
         from employee.models import Employee  # avoid circular import
 
         if Employee.objects.filter(email=email).exists():
-            messages.error(request, ("An employee with this email already exists."))
+            messages.error(request, _("An employee with this email already exists."))
             return redirect("register")
 
         # Atomic create of User, Company (by name) and Employee
@@ -693,6 +693,7 @@ def register_user(request):
                     employee_last_name=last_name,
                     email=email,
                     phone=phone,
+                    company_id=company,  # Agregar la relación directa con la empresa
                 )
 
                 # Ensure work info exists and link company
@@ -716,10 +717,10 @@ def register_user(request):
                     pass
 
         except Exception as e:
-            messages.error(request, ("Registration could not be completed. ") + str(e))
+            messages.error(request, _("Registration could not be completed. ") + str(e))
             return redirect("register")
 
-        messages.success(request, ("Registration successful. You can now sign in."))
+        messages.success(request, _("Registration successful. You can now sign in."))
         return redirect("login")
 
     return render(

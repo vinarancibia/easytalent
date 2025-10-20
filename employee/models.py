@@ -109,8 +109,16 @@ class Employee(models.Model):
     is_directly_converted = models.BooleanField(
         default=False, null=True, blank=True, editable=False
     )
+    # Nueva relación directa con Company
+    company_id = models.ForeignKey(
+        Company,
+        on_delete=models.PROTECT,
+        blank=True,
+        null=True,
+        verbose_name=_("Company"),
+    )
     objects = HorillaCompanyManager(
-        related_company_field="employee_work_info__company_id"
+        related_company_field="company_id"  # Actualizar el campo de referencia
     )
 
     def clean_fields(self, exclude=None):
