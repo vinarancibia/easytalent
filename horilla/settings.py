@@ -204,13 +204,7 @@ X_FRAME_OPTIONS = "SAMEORIGIN"
 
 LANGUAGES = (
     ("en", "English (US)"),
-    ("de", "Deutsche"),
     ("es", "Español"),
-    ("fr", "Français"),
-    ("ar", "عربى"),
-    ("pt-br", "Português (Brasil)"),
-    ("zh-hans", "Simplified Chinese"),
-    ("zh-hant", "Traditional Chinese"),
 )
 
 
