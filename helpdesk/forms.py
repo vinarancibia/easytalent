@@ -66,22 +66,16 @@ class FAQForm(ModelForm):
         exclude = ["is_active"]
         widgets = {
             "category": forms.HiddenInput(),
-            "tags": forms.SelectMultiple(
-                attrs={
-                    "class": "oh-select oh-select-2 select2-hidden-accessible",
-                    "onchange": "updateTag(this)",
-                }
-            ),
         }
 
     def __init__(self, *args, **kwargs):
-        """
-        Initializes the Ticket tag form instance.
-        If an instance is provided, sets the initial value for the form's .
-        """
+        """Initializes the FAQ form instance and adjusts the tags field."""
         super().__init__(*args, **kwargs)
-        self.fields["tags"].choices = list(self.fields["tags"].choices)
-        self.fields["tags"].choices.append(("create_new_tag", "Create new tag"))
+
+        if "tags" in self.fields:
+            self.fields["tags"].choices = list(self.fields["tags"].choices)
+            self.fields["tags"].widget.attrs.update({"onchange": "updateTag(this)"})
+            self.fields["tags"].choices.append(("create_new_tag", "Create new tag"))
 
 
 class TicketForm(ModelForm):
@@ -136,9 +130,15 @@ class TicketForm(ModelForm):
         else:
             employee = request.user.employee_get
         # initialising employee queryset according to the user
-        self.fields["employee_id"].queryset = filtersubordinatesemployeemodel(
-            request, Employee.objects.filter(is_active=True), perm="helpdesk.add_ticket"
-        ) | Employee.objects.filter(employee_user_id=request.user)
+        self.fields["employee_id"].queryset = (
+            filtersubordinatesemployeemodel(
+                request,
+                Employee.objects.filter(is_active=True),
+                perm="helpdesk.add_ticket",
+            )
+        ).distinct() | (
+            Employee.objects.filter(employee_user_id=request.user)
+        ).distinct()
         self.fields["employee_id"].initial = employee
         # appending dynamic create option according to user
         if is_reportingmanager(request) or request.user.has_perm(
@@ -161,14 +161,6 @@ class TicketTagForm(ModelForm):
         fields = [
             "tags",
         ]
-        widgets = {
-            "tags": forms.SelectMultiple(
-                attrs={
-                    "class": "oh-select oh-select-2 select2-hidden-accessible",
-                    "onchange": "updateTag()",
-                }
-            ),
-        }
 
     def __init__(self, *args, **kwargs):
         """
@@ -177,7 +169,13 @@ class TicketTagForm(ModelForm):
         """
         super().__init__(*args, **kwargs)
         request = getattr(horilla_middlewares._thread_locals, "request", None)
-        if is_reportingmanager(request) or request.user.has_perm("base.add_tags"):
+
+        if (
+            request
+            and request.user.is_authenticated
+            and (is_reportingmanager(request) or request.user.has_perm("base.add_tags"))
+        ):
+            self.fields["tags"].widget.attrs.update({"onchange": "updateTag(this)"})
             self.fields["tags"].choices = list(self.fields["tags"].choices)
             self.fields["tags"].choices.append(("create_new_tag", "Create new tag"))
 

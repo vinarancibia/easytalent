@@ -402,7 +402,7 @@ class Candidate(HorillaModel):
     schedule_date = models.DateTimeField(
         blank=True, null=True, verbose_name=_("Schedule date")
     )
-    email = models.EmailField(max_length=254, unique=True, verbose_name=_("Email"))
+    email = models.EmailField(max_length=254, verbose_name=_("Email"))
     mobile = models.CharField(
         max_length=15,
         blank=True,
@@ -985,7 +985,8 @@ class InterviewSchedule(HorillaModel):
     interview_date = models.DateField(verbose_name=_("Interview Date"))
     interview_time = models.TimeField(verbose_name=_("Interview Time"))
     description = models.TextField(
-        verbose_name=_("Description"), blank=True, max_length=255
+        verbose_name=_("Description"),
+        blank=True,
     )
     completed = models.BooleanField(
         default=False, verbose_name=_("Is Interview Completed")
@@ -1039,7 +1040,7 @@ class CandidateDocumentRequest(HorillaModel):
     candidate_id = models.ManyToManyField(Candidate)
     format = models.CharField(choices=FORMATS, max_length=10)
     max_size = models.IntegerField(blank=True, null=True)
-    description = models.TextField(blank=True, null=True, max_length=255)
+    description = models.TextField(blank=True, null=True)
     objects = HorillaCompanyManager(
         related_company_field="employee_id__employee_work_info__company_id"
     )

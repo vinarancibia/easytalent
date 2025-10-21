@@ -61,17 +61,12 @@
                         {% trans "Secure Sign-in" %}
                     </button>
                     {% if not initialize_database %}
-                    <small class="text-center">
-                        <a href="{% url 'forgot-password' %}" class="oh-link oh-link--secondary justify-content-center">
-                            {% trans "Forgot password" %}?
-                        </a>
-                    </small>
-                    <small class="text-center d-block">
-                        <a href="{% url 'register' %}" class="oh-link oh-link--secondary justify-content-center">
-                            {% trans "Don't have an account? Create one" %}
-                        </a>
-                    </small>
-                {% endif %}
+                        <small class="text-center">
+                            <a href="{% url 'forgot-password' %}" class="oh-link oh-link--secondary justify-content-center">
+                                {% trans "Forgot password" %}?
+                            </a>
+                        </small>
+                    {% endif %}
                 </form>
                 {% if initialize_database %}
                     <div>
