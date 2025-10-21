@@ -27,6 +27,106 @@ from horilla.horilla_apps import NESTED_SUBORDINATE_VISIBILITY
 from horilla.horilla_middlewares import _thread_locals
 from horilla.horilla_settings import HORILLA_DATE_FORMATS, HORILLA_TIME_FORMATS
 
+CHART_CONFIG = {
+    "offline_employees": {
+        "app": "attendance",
+        "perm": "employee.view_employee",
+        "need_reporting_manager": True,
+    },
+    "online_employees": {
+        "app": "attendance",
+        "perm": "employee.view_employee",
+        "need_reporting_manager": True,
+    },
+    "overall_leave_chart": {
+        "app": "leave",
+        "perm": "leave.view_leaverequest",
+    },
+    "hired_candidates": {
+        "app": "recruitment",
+        "perm": "recruitment.view_candidate",
+        "need_stage_manager": True,
+    },
+    "onboarding_candidates": {
+        "app": "onboarding",
+        "perm": "recruitment.view_candidate",
+        "need_stage_manager": True,
+    },
+    "recruitment_analytics": {
+        "app": "recruitment",
+        "perm": "recruitment.view_recruitment",
+        "need_stage_manager": True,
+    },
+    "attendance_analytic": {
+        "app": "attendance",
+        "perm": "attendance.view_attendance",
+        "need_reporting_manager": True,
+    },
+    "hours_chart": {
+        "app": "attendance",
+        "perm": "attendance.view_attendance",
+        "need_reporting_manager": True,
+    },
+    "objective_status": {
+        "app": "pms",
+        "perm": "pms.view_employeeobjective",
+        "need_reporting_manager": True,
+    },
+    "key_result_status": {
+        "app": "pms",
+        "perm": "pms.view_employeekeyresult",
+        "need_reporting_manager": True,
+    },
+    "feedback_status": {
+        "app": "pms",
+        "perm": "pms.view_feedback",
+        "need_reporting_manager": True,
+    },
+    "shift_request_approve": {
+        "app": "base",
+        "perm": "base.change_shiftrequest",
+        "need_reporting_manager": True,
+    },
+    "work_type_request_approve": {
+        "app": "base",
+        "perm": "base.change_worktyperequest",
+        "need_reporting_manager": True,
+    },
+    "overtime_approve": {
+        "app": "attendance",
+        "perm": "attendance.change_attendance",
+        "need_reporting_manager": True,
+    },
+    "attendance_validate": {
+        "app": "attendance",
+        "perm": "attendance.change_attendance",
+        "need_reporting_manager": True,
+    },
+    "leave_request_approve": {
+        "app": "leave",
+        "perm": "leave.change_leaverequest",
+        "need_reporting_manager": True,
+    },
+    "leave_allocation_approve": {
+        "app": "leave",
+        "perm": "leave.change_leaveallocationrequest",
+        "need_reporting_manager": True,
+    },
+    "asset_request_approve": {
+        "app": "asset",
+        "perm": "asset.change_assetrequest",
+        "need_reporting_manager": True,
+    },
+    "employee_work_info": {
+        "app": "employee",
+        "perm": "employee.change_employee",
+        "need_reporting_manager": True,
+    },
+    "employees_chart": {"app": "employee"},
+    "gender_chart": {"app": "employee"},
+    "department_chart": {"app": "base"},
+}
+
 
 def users_count(self):
     """
@@ -769,13 +869,44 @@ def reload_queryset(fields):
     return fields
 
 
-def check_manager(employee, instance):
+# def check_manager(employee, instance):
+
+
+#     try:
+#         if isinstance(instance, Employee):
+#             return instance.employee_work_info.reporting_manager_id == employee
+#         return employee == instance.employee_id.employee_work_info.reporting_manager_id
+#     except:
+#         return False
+
+
+def check_manager(employee, instance, nested=NESTED_SUBORDINATE_VISIBILITY):
+    """
+    Check if the given employee manages the instance employee.
+    Supports both direct and nested (indirect) checks.
+    """
 
     try:
-        if isinstance(instance, Employee):
-            return instance.employee_work_info.reporting_manager_id == employee
-        return employee == instance.employee_id.employee_work_info.reporting_manager_id
-    except:
+        # Get the target employee
+        target_employee = (
+            instance if isinstance(instance, Employee) else instance.employee_id
+        )
+
+        # Direct manager check
+        direct_manager = target_employee.employee_work_info.reporting_manager_id
+        if not nested:
+            return direct_manager == employee
+
+        # Recursive (nested) manager check
+        current_manager = direct_manager
+        while current_manager:
+            if current_manager == employee:
+                return True
+            current_manager = current_manager.employee_work_info.reporting_manager_id
+
+        return False
+
+    except Exception:
         return False
 
 
@@ -915,10 +1046,8 @@ def is_company_leave(input_date):
     adjusted_day = (
         input_date.day + first_day_of_month.weekday()
     )  # Adjust day based on first day of the month
-    # Calculate the week number (0-based)
-    date_week_no = (adjusted_day - 1) // 7
-    # Get weekday (0 for Monday to 6 for Sunday)
-    date_week_day = input_date.weekday()
+    date_week_no = (adjusted_day - 1) // 7  # Calculate the week number (0-based)
+    date_week_day = input_date.weekday()  # Get weekday (0 for Monday to 6 for Sunday)
 
     # Query for company leaves that match the week number and weekday
     company_leave = CompanyLeaves.objects.filter(
@@ -1105,6 +1234,48 @@ def eval_validate(value):
     """
     value = ast.literal_eval(value)
     return value
+
+
+def check_chart_permission(request, charts):
+    """
+    Check which dashboard charts the user has permission to view.
+    Args:
+        request: Django request object
+        charts: list of (chart_name, ...) tuples
+    """
+    from base.templatetags.basefilters import is_reportingmanager
+
+    if apps.is_installed("recruitment"):
+        from recruitment.templatetags.recruitmentfilters import is_stagemanager
+    else:
+        is_stagemanager = lambda u: False  # fallback if recruitment not installed
+
+    def has_chart_access(chart_name):
+        config = CHART_CONFIG.get(chart_name)
+        if not config:
+            return False
+
+        # app must be installed
+        if not apps.is_installed(config["app"]):
+            return False
+
+        # check permission
+        perm = config.get("perm")
+        if perm and request.user.has_perm(perm):
+            return True
+
+        # reporting manager check
+        if config.get("need_reporting_manager") and is_reportingmanager(request.user):
+            return True
+
+        # stage manager check
+        if config.get("need_stage_manager") and is_stagemanager(request.user):
+            return True
+
+        # allow unrestricted charts
+        return not perm
+
+    return [chart for chart in charts if has_chart_access(chart[0])]
 
 
 def template_pdf(template, context={}, html=False, filename="payslip.pdf"):

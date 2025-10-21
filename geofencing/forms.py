@@ -1,4 +1,3 @@
-from django import forms
 from django.template.loader import render_to_string
 
 from base.forms import ModelForm
@@ -11,8 +10,7 @@ class GeoFencingSetupForm(ModelForm):
 
     class Meta:
         model = GeoFencing
-        fields = "__all__"
-        widgets = {"company_id": forms.HiddenInput()}
+        exclude = ["company_id"]
 
     def as_p(self):
         """

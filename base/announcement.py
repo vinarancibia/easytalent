@@ -158,6 +158,45 @@ def create_announcement(request):
             messages.success(request, _("Announcement created successfully."))
             form = AnnouncementForm()  # Reset the form
 
+            emp_dep = User.objects.filter(
+                employee_get__employee_work_info__department_id__in=departments
+            )
+            emp_jobs = User.objects.filter(
+                employee_get__employee_work_info__job_position_id__in=job_positions
+            )
+            employees = employees | Employee.objects.filter(
+                employee_work_info__department_id__in=departments
+            )
+            employees = employees | Employee.objects.filter(
+                employee_work_info__job_position_id__in=job_positions
+            )
+            announcement.employees.add(*employees)
+            announcement.save()
+
+            notify.send(
+                request.user.employee_get,
+                recipient=emp_dep,
+                verb="Your department was mentioned in a post.",
+                verb_ar="تم ذكر قسمك في منشور.",
+                verb_de="Ihr Abteilung wurde in einem Beitrag erwähnt.",
+                verb_es="Tu departamento fue mencionado en una publicación.",
+                verb_fr="Votre département a été mentionné dans un post.",
+                redirect="/",
+                icon="chatbox-ellipses",
+            )
+
+            notify.send(
+                request.user.employee_get,
+                recipient=emp_jobs,
+                verb="Your job position was mentioned in a post.",
+                verb_ar="تم ذكر وظيفتك في منشور.",
+                verb_de="Ihre Arbeitsposition wurde in einem Beitrag erwähnt.",
+                verb_es="Tu puesto de trabajo fue mencionado en una publicación.",
+                verb_fr="Votre poste de travail a été mentionné dans un post.",
+                redirect="/",
+                icon="chatbox-ellipses",
+            )
+            form = AnnouncementForm()
     return render(request, "announcement/announcement_form.html", {"form": form})
 
 
@@ -342,9 +381,7 @@ def comment_view(request, anoun_id):
         "-created_at"
     )
     if not announcement.public_comments:
-        comments = filter_own_records(
-            request, comments, "base.view_announcementcomment"
-        )
+        comments = filter_own_records(request, comments, "base.view_announcement")
     no_comments = not comments.exists()
 
     return render(

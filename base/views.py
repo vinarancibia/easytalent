@@ -23,9 +23,11 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import Group, Permission, User
 from django.contrib.auth.views import PasswordResetConfirmView, PasswordResetView
+from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from django.core.mail import EmailMessage, EmailMultiAlternatives
 from django.core.management import call_command
+from django.core.validators import validate_ipv46_address
 from django.db.models import ProtectedError, Q
 from django.http import (
     FileResponse,
@@ -38,11 +40,16 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
+from django.utils.decorators import method_decorator
 from django.utils.html import strip_tags
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext as _
+from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from rest_framework_simplejwt.tokens import UntypedToken
 
 from accessibility.accessibility import ACCESSBILITY_FEATURE
 from accessibility.models import DefaultAccessibility
@@ -112,6 +119,7 @@ from base.forms import (
     WorkTypeRequestForm,
 )
 from base.methods import (
+    check_chart_permission,
     choosesubordinates,
     closest_numbers,
     export_data,
@@ -142,10 +150,12 @@ from base.models import (
     EmployeeType,
     Holidays,
     HorillaMailTemplate,
+    IntegrationApps,
     JobPosition,
     JobRole,
     MultipleApprovalCondition,
     MultipleApprovalManagers,
+    PenaltyAccounts,
     RotatingShift,
     RotatingWorkType,
     RotatingWorkTypeAssign,
@@ -188,6 +198,32 @@ from horilla_audit.forms import HistoryTrackingFieldsForm
 from horilla_audit.models import AccountBlockUnblock, AuditTag, HistoryTrackingFields
 from notifications.models import Notification
 from notifications.signals import notify
+
+CHARTS = [
+    ("employee_work_info", _("Employee Work Info")),
+    ("offline_employees", _("Offline Employees")),
+    ("online_employees", _("Online Employees")),
+    ("overall_leave_chart", _("Overall Leave Chart")),
+    ("hired_candidates", _("Hired Candidates")),
+    ("onboarding_candidates", _("Onboarding Candidates")),
+    ("recruitment_analytics", _("Recruitment Analytics")),
+    ("attendance_analytic", _("Attendance analytics")),
+    ("hours_chart", _("Hours Chart")),
+    ("employees_chart", _("Employees Chart")),
+    ("department_chart", _("Department Chart")),
+    ("gender_chart", _("Gender Chart")),
+    ("shift_request_approve", _("Shift Request to Approve")),
+    ("work_type_request_approve", _("Work Type Request to Approve")),
+    ("overtime_approve", _("Overtime to Approve")),
+    ("attendance_validate", _("Attendance to Validate")),
+    ("leave_request_approve", _("Leave Request to Approve")),
+    ("leave_allocation_approve", _("Leave Allocation to Approve")),
+    ("feedback_answer", _("Feedbacks to Answer")),
+    ("asset_request_approve", _("Asset Request to Approve")),
+    ("objective_status", _("Objective Status")),
+    ("key_result_status", _("Key Result Status")),
+    ("feedback_status", _("Feedback Status")),
+]
 
 
 def custom404(request):
@@ -619,115 +655,6 @@ def login_user(request):
     return render(
         request, "login.html", {"initialize_database": initialize_database_condition()}
     )
-    
-
-def register_user(request):
-    """
-    Handles user registration and related Employee creation.
-    Also allows creating/selecting a Company by name and links it to the employee's work info.
-    """
-    if request.method == "POST":
-        email = (request.POST.get("email") or "").strip()
-        first_name = (request.POST.get("first_name") or "").strip()
-        last_name = (request.POST.get("last_name") or "").strip()
-        phone = (request.POST.get("phone") or "").strip()
-        company_name = (request.POST.get("company_name") or "").strip()
-        password1 = request.POST.get("password1") or ""
-        password2 = request.POST.get("password2") or ""
-
-        # Basic validations
-        if not email or not first_name or not phone or not company_name or not password1 or not password2:
-            messages.error(request, _("All required fields must be filled."))
-            return redirect("register")
-
-        if password1 != password2:
-            messages.error(request, _("Passwords do not match."))
-            return redirect("register")
-
-        if len(password1) < 8:
-            messages.error(request, _("Password must be at least 8 characters long."))
-            return redirect("register")
-
-        # Uniqueness validations
-        if User.objects.filter(username=email).exists():
-            messages.error(request, _("A user with this email already exists."))
-            return redirect("register")
-
-        from employee.models import Employee  # avoid circular import
-
-        if Employee.objects.filter(email=email).exists():
-            messages.error(request, _("An employee with this email already exists."))
-            return redirect("register")
-
-        # Atomic create of User, Company (by name) and Employee
-        from django.db import transaction
-        from base.models import Company
-
-        try:
-            with transaction.atomic():
-                user = User.objects.create_user(
-                    username=email,
-                    email=email,
-                    password=password1,
-                )
-                user.first_name = first_name
-                user.last_name = last_name
-                user.is_active = True
-                user.save()
-
-                # Create or get Company by name (fill other NOT NULL fields with empty strings)
-                company, created = Company.objects.get_or_create(
-                    company=company_name,
-                    defaults={
-                        "address": "",
-                        "country": "",
-                        "state": "",
-                        "city": "",
-                        "zip": "",
-                    },
-                )
-
-                employee = Employee.objects.create(
-                    employee_user_id=user,
-                    employee_first_name=first_name,
-                    employee_last_name=last_name,
-                    email=email,
-                    phone=phone,
-                    company_id=company,  # Agregar la relación directa con la empresa
-                )
-
-                # Ensure work info exists and link company
-                if not hasattr(employee, "employee_work_info"):
-                    from employee.models import EmployeeWorkInformation
-                    EmployeeWorkInformation.objects.get_or_create(employee_id=employee)
-
-                ewi = employee.employee_work_info
-                if ewi and not ewi.company_id:
-                    ewi.company_id = company
-                    ewi.save()
-
-                # Default permissions
-                try:
-                    from django.contrib.auth.models import Permission
-                    change_ownprofile = Permission.objects.get(codename="change_ownprofile")
-                    view_ownprofile = Permission.objects.get(codename="view_ownprofile")
-                    user.user_permissions.add(view_ownprofile)
-                    user.user_permissions.add(change_ownprofile)
-                except Exception:
-                    pass
-
-        except Exception as e:
-            messages.error(request, _("Registration could not be completed. ") + str(e))
-            return redirect("register")
-
-        messages.success(request, _("Registration successful. You can now sign in."))
-        return redirect("login")
-
-    return render(
-        request,
-        "register.html",
-        {"initialize_database": initialize_database_condition()},
-    )
 
 
 def include_employee_instance(request, form):
@@ -740,7 +667,8 @@ def include_employee_instance(request, form):
     employee = Employee.objects.filter(employee_user_id=request.user)
     if employee.first() is not None:
         if queryset.filter(id=employee.first().id).first() is None:
-            queryset = queryset | employee
+            # queryset = queryset | employee
+            queryset = queryset.distinct() | employee.distinct()
             form.fields["employee_id"].queryset = queryset
     return form
 
@@ -1036,26 +964,33 @@ def home(request):
     today_weekday = today.weekday()
     first_day_of_week = today - timedelta(days=today_weekday)
     last_day_of_week = first_day_of_week + timedelta(days=6)
+    total_employees = Employee.objects.filter(is_active=True).count()
+    current_employee = request.user.employee_get
 
-    employee_charts = DashboardEmployeeCharts.objects.get_or_create(
-        employee=request.user.employee_get
-    )[0]
+    employee_charts = DashboardEmployeeCharts.objects.filter(
+        employee=current_employee
+    ).first()
 
-    user = request.user
-    today = timezone.now().date()  # Get today's date
+    chart_list = [chart[0] for chart in check_chart_permission(request, CHARTS)]
+
+    if employee_charts and employee_charts.charts is not None:
+        chart_list = employee_charts.charts
+
+    today = timezone.now().date()
     is_birthday = None
 
-    if user.employee_get.dob != None:
+    if current_employee.dob != None:
         is_birthday = (
-            user.employee_get.dob.month == today.month
-            and user.employee_get.dob.day == today.day
+            current_employee.dob.month == today.month
+            and current_employee.dob.day == today.day
         )
 
     context = {
         "first_day_of_week": first_day_of_week.strftime("%Y-%m-%d"),
         "last_day_of_week": last_day_of_week.strftime("%Y-%m-%d"),
-        "charts": employee_charts.charts,
+        "charts": chart_list,
         "is_birthday": is_birthday,
+        "total_employees": total_employees,
     }
 
     return render(request, "index.html", context)
@@ -1398,7 +1333,7 @@ def object_delete(request, obj_id, **kwargs):
             - model (Model): The Django model class to which the object belongs.
             - redirect_path (str): The URL path to redirect to after deletion.
     Returns:
-        HttpResponse: Redirects to the specified `redirect_path` or reloads the
+        HttpResponse: Redirects to the specified redirect_path or reloads the
                       previous page. In case of a ProtectedError, it shows an error
                       message indicating that the object is in use.
     """
@@ -1520,7 +1455,6 @@ def object_duplicate(request, obj_id, **kwargs):
 
 @login_required
 @hx_request_required
-@duplicate_permission()
 def add_remove_dynamic_fields(request, **kwargs):
     """
     Handles the dynamic addition and removal of form fields in a Django form.
@@ -1551,6 +1485,7 @@ def add_remove_dynamic_fields(request, **kwargs):
         field_name_pre = kwargs["field_name_pre"]
         field_type = kwargs.get("field_type")
         hx_target = request.META.get("HTTP_HX_TARGET")
+
         if hx_target:
             field_counts = int(hx_target.split("_")[-1]) + 1
             next_hx_target = f"{hx_target.rsplit('_', 1)[0]}_{field_counts}"
@@ -1572,7 +1507,7 @@ def add_remove_dynamic_fields(request, **kwargs):
                     queryset=model.objects.all(),
                     widget=forms.Select(
                         attrs={
-                            "class": "oh-select oh-select-2 mb-3",
+                            "class": "oh-select oh-select-2 mb-3 w-100",
                             "name": field_name,
                             "id": f"id_{field_name}",
                         }
@@ -1580,12 +1515,14 @@ def add_remove_dynamic_fields(request, **kwargs):
                     required=False,
                     empty_label=empty_label,
                 )
+
             context = {
                 "field_counts": field_counts,
                 "field_html": form[field_name].as_widget(),
                 "current_hx_target": hx_target,
                 "next_hx_target": next_hx_target,
             }
+
             field_html = render_to_string(template, context)
             return HttpResponse(field_html)
     return HttpResponse()
@@ -1691,7 +1628,6 @@ def mail_server_test_email(request):
                     msg.attach(msg_img)
 
                 msg.send()
-
             except Exception as e:
                 messages.error(request, " ".join([_("Something went wrong :"), str(e)]))
                 return HttpResponse("<script>window.location.reload()</script>")
@@ -2512,6 +2448,9 @@ def rotating_work_type_assign_redirect(request, obj_id=None, employee_id=None):
     request_copy.pop("instances_ids", None)
     previous_data = request_copy.urlencode()
     hx_target = request.META.get("HTTP_HX_TARGET", None)
+    hx_current_url = request.META.get("HTTP_HX_CURRENT_URL", None)
+    parsed_url = urlparse(hx_current_url)
+    hx_current_path = parsed_url.path.lstrip("/")
     if hx_target and hx_target == "view-container":
         return redirect(f"/rotating-work-type-assign-view?{previous_data}")
     elif hx_target and hx_target == "objectDetailsModalTarget":
@@ -2528,6 +2467,33 @@ def rotating_work_type_assign_redirect(request, obj_id=None, employee_id=None):
         return redirect(url + params)
     elif hx_target and hx_target == "shift_target" and employee_id:
         return redirect(f"/employee/shift-tab/{employee_id}")
+
+    elif hx_target and hx_target == "genericModalBody":
+        instances_ids = request.GET.get("instances_ids")
+        instances_list = json.loads(instances_ids)
+        if obj_id in instances_list:
+            instances_list.remove(obj_id)
+        previous_instance, next_instance = closest_numbers(
+            json.loads(instances_ids), obj_id
+        )
+
+        return redirect(
+            f"/work-rotating-detail-view/{next_instance}/?{previous_data}&instances_ids={instances_list}&deleted=True"
+        )
+
+    elif hx_target and hx_target == "rotating-work-container":
+        if hx_current_path == "employee/rotating-work-type-assign/":
+            rwork_type_requests = RotatingWorkTypeAssign.objects.all()
+            previous_data = request.GET.urlencode()
+            if rwork_type_requests.exists():
+                return redirect(f"/rotating-list-view?is_active=True&{previous_data}")
+            else:
+                return HttpResponse("<script>window.location.reload()</script>")
+        else:
+            return redirect(
+                f"/employee-rotating-work-tab-list/{employee_id}?deleted=True"
+            )
+
     elif hx_target:
         return HttpResponse("<script>window.location.reload()</script>")
     else:
@@ -2568,9 +2534,13 @@ def rotating_work_type_assign_bulk_archive(request):
     """
     This method is used to archive/un-archive bulk rotating work type assigns.
     """
-    ids = json.loads(request.POST["ids"])
-    is_active = request.POST.get("is_active") != "false"
-    message = _("un-archived") if is_active else _("archived")
+    ids = request.POST["ids"]
+    ids = json.loads(ids)
+    is_active = True
+    message = _("un-archived")
+    if request.GET.get("is_active") == "False":
+        is_active = False
+        message = _("archived")
     count = 0
 
     for id in ids:
@@ -2598,6 +2568,8 @@ def rotating_work_type_assign_bulk_archive(request):
                 count=count, message=message
             ),
         )
+
+        return JsonResponse({"message": "Success"})
 
     return rotating_work_type_assign_redirect(request)
 
@@ -3371,11 +3343,32 @@ def rotating_shift_assign_redirect(request, obj_id, employee_id):
         previous_instance, next_instance = closest_numbers(
             json.loads(instances_ids), obj_id
         )
-        url = f"/rshit-individual-view/{next_instance}/"
-        params = f"?{previous_data}&instances_ids={instances_list}"
-        return redirect(url + params)
+        return redirect(
+            f"/rshit-individual-view/{next_instance}/?{previous_data}\
+            &instances_ids={instances_list}"
+        )
+    elif hx_target and hx_target == "genericModalBody":
+        instances_ids = request.GET.get("instances_ids")
+        instances_list = json.loads(instances_ids)
+        if obj_id in instances_list:
+            instances_list.remove(obj_id)
+        previous_instance, next_instance = closest_numbers(
+            json.loads(instances_ids), obj_id
+        )
+        return redirect(
+            f"/rotating-shift-individual-detail-view/{next_instance}/?{previous_data}&instance_ids={instances_list}&detail=true"
+        )
     elif hx_target and hx_target == "shift_target" and employee_id:
         return redirect(f"/employee/shift-tab/{employee_id}")
+    elif hx_target and hx_target == "rotating-shift-container":
+        path = request.META.get("HTTP_HX_CURRENT_URL", None)
+        parsed_url = urlparse(path)
+        parsed_path = parsed_url.path.lstrip("/")
+        if parsed_path == "employee/rotating-shift-assign/":
+            return redirect(f"/rotating-shift-request-list/?is_active=true")
+        return redirect(
+            f"/rotating-shift-individual-tab-view/{employee_id}?deleted=true"
+        )
     elif hx_target:
         return HttpResponse("<script>window.location.reload()</script>")
     else:
@@ -3520,16 +3513,24 @@ def get_models_in_app(app_name):
 
 @login_required
 @manager_can_enter("auth.view_permission")
-def employee_permission_assign(request):
+def employee_permission_assign(request, pk=None):
     """
     This method is used to assign permissions to employee user
     """
 
     context = {}
     template = "base/auth/permission.html"
-    if request.GET.get("profile_tab") and request.GET.get("employee_id"):
+    path = request.path
+    parts = path.strip("/").split("/")
+    id_part = parts[-1]
+    emp_id = None
+    if id_part != "employee-permission-assign":
+        emp_id = id_part
+    else:
+        id_part = None
+    if emp_id:
         template = "tabs/group_permissions.html"
-        employees = Employee.objects.filter(id=request.GET["employee_id"])
+        employees = Employee.objects.filter(id=emp_id)
         context["employee"] = employees.first()
     else:
         employees = Employee.objects.filter(
@@ -4143,6 +4144,7 @@ def work_type_request_delete(request, obj_id):
         id : work type request instance id
 
     """
+
     try:
         work_type_request = WorkTypeRequest.objects.get(id=obj_id)
         employee = work_type_request.employee_id
@@ -4164,8 +4166,12 @@ def work_type_request_delete(request, obj_id):
         messages.error(request, _("Work type request not found."))
     except ProtectedError:
         messages.error(request, _("You cannot delete this work type request."))
+
     hx_target = request.META.get("HTTP_HX_TARGET", None)
-    if hx_target and hx_target == "objectDetailsModalTarget":
+    hx_current_url = request.META.get("HTTP_HX_CURRENT_URL", None)
+    parsed_url = urlparse(hx_current_url)
+    hx_current_path = parsed_url.path.lstrip("/")
+    if hx_target and hx_target == "genericModalBody":
         instances_ids = request.GET.get("instances_ids")
         instances_list = json.loads(instances_ids)
         if obj_id in instances_list:
@@ -4173,19 +4179,32 @@ def work_type_request_delete(request, obj_id):
         previous_instance, next_instance = closest_numbers(
             json.loads(instances_ids), obj_id
         )
-        return redirect(
-            f"/work-type-request-single-view/{next_instance}/?instances_ids={instances_list}"
-        )
-    elif hx_target and hx_target == "view-container":
         previous_data = request.GET.urlencode()
-        work_type_requests = WorkTypeRequest.objects.all()
-        if work_type_requests.exists():
-            return redirect(f"/work-type-request-search?{previous_data}")
+        return redirect(
+            f"/work-detail-view/{next_instance}/?{previous_data}&instance_ids={instances_list}&deleted=true"
+        )
+    # elif hx_target and hx_target == "listContainer":
+    #     previous_data = request.GET.urlencode()
+    #     work_type_requests = WorkTypeRequest.objects.all()
+    #     if work_type_requests.exists():
+    #         return redirect(f"/work-list-view?{previous_data}")
+    #     else:
+    #         return HttpResponse("<script>window.location.reload()</script>")
+
+    elif hx_target and hx_target == "work-shift":
+        if hx_current_path == "employee/work-type-request-view/":
+            work_type_requests = WorkTypeRequest.objects.all()
+            previous_data = request.GET.urlencode()
+            if work_type_requests.exists():
+                return redirect(f"/work-list-view?{previous_data}")
+            else:
+                return HttpResponse("<script>window.location.reload()</script>")
         else:
-            return HttpResponse("<script>window.location.reload()</script>")
+            return redirect(f"/employeeprofileview-Work Type & Shift/{employee.id}")
 
     elif hx_target and hx_target == "shift_target" and employee:
         return redirect(f"/employee/shift-tab/{employee.id}")
+
     else:
         return HttpResponse("<script>window.location.reload()</script>")
 
@@ -4229,12 +4248,13 @@ def work_type_request_bulk_delete(request):
     """
     ids = request.POST["ids"]
     ids = json.loads(ids)
+    del_ids = []
     for id in ids:
         try:
             work_type_request = WorkTypeRequest.objects.get(id=id)
             user = work_type_request.employee_id.employee_user_id
             work_type_request.delete()
-            messages.success(request, _("Work type request deleted."))
+            del_ids.append(work_type_request)
             notify.send(
                 request.user.employee_get,
                 recipient=user,
@@ -4259,6 +4279,7 @@ def work_type_request_bulk_delete(request):
                 ),
             )
         result = True
+    messages.success(request, _("{} work type requests deleted.".format(len(del_ids))))
     return JsonResponse({"result": result})
 
 
@@ -5112,6 +5133,7 @@ def shift_request_delete(request, id):
         id : shift request instance id
 
     """
+
     try:
         shift_request = ShiftRequest.find(id)
         user = shift_request.employee_id.employee_user_id
@@ -5135,8 +5157,32 @@ def shift_request_delete(request, id):
         messages.error(request, _("You cannot delete this shift request."))
 
     hx_target = request.META.get("HTTP_HX_TARGET", None)
-    if hx_target and hx_target == "shift_target" and shift_request.employee_id:
-        return redirect(f"/employee/shift-tab/{shift_request.employee_id.id}")
+    path = request.META.get("HTTP_HX_CURRENT_URL", None)
+    parsed_url = urlparse(path)
+    parsed_path = parsed_url.path.lstrip("/")
+    if hx_target and hx_target == "shift-container":
+        previous_data = request.GET.urlencode()
+        if parsed_path == "employee/shift-request-view/":
+            return redirect(f"/list-shift-request/?deleted=true")
+        else:
+            return redirect(
+                f"/shift-request-individual-tab-view/{shift_request.employee_id.id}?deleted=true"
+            )
+    if hx_target and hx_target == "genericModalBody":
+        previous_data = request.GET.urlencode()
+        instances_ids = request.GET.get("instances_ids", None)
+        instances_list = json.loads(instances_ids) if instances_ids else []
+        if id in instances_list:
+            instances_list.remove(id)
+            previous_instance, next_instance = closest_numbers(
+                json.loads(instances_ids), id
+            )
+            return redirect(
+                f"/shift-detail-view/{next_instance}/?{previous_data}&instance_ids={instances_list}&deleted=true"
+            )
+        else:
+            return HttpResponse(status=204, headers={"HX-Refresh": "true"})
+
     return HttpResponseRedirect(request.META.get("HTTP_REFERER", "/"))
 
 
@@ -5152,13 +5198,14 @@ def shift_request_bulk_delete(request):
     """
     ids = request.POST["ids"]
     ids = json.loads(ids)
+    del_ids = []
     result = False
     for id in ids:
         try:
             shift_request = ShiftRequest.objects.get(id=id)
             user = shift_request.employee_id.employee_user_id
             shift_request.delete()
-            messages.success(request, _("Shift request deleted."))
+            del_ids.append(shift_request)
             notify.send(
                 request.user.employee_get,
                 recipient=user,
@@ -5183,6 +5230,8 @@ def shift_request_bulk_delete(request):
                 ),
             )
         result = True
+
+    messages.success(request, _("{} shift requests deleted.".format(len(del_ids))))
     return JsonResponse({"result": result})
 
 
@@ -6063,7 +6112,6 @@ def add_more_approval_managers(request):
     field_html = render_to_string(
         "multi_approval_condition/add_more_approval_manager.html", context
     )
-
     return HttpResponse(field_html)
 
 
@@ -6146,6 +6194,23 @@ def edit_approval_managers(form, managers):
                 widget=forms.Select(attrs={"class": "oh-select oh-select-2 mb-3"}),
                 required=False,
             )
+
+            form.initial[field_name] = manager.employee_id
+    return form
+
+
+def approval_managers_edit(form, managers):
+    for i, manager in enumerate(managers):
+        if i == 0:
+            form.initial["multi_approval_manager"] = manager.employee_id
+        else:
+            field_name = f"multi_approval_manager_{i}"
+            form.fields[field_name] = forms.ModelChoiceField(
+                queryset=Employee.objects.all(),
+                label=_("Approval Manager {}").format(i),
+                widget=forms.Select(attrs={"class": "oh-select oh-select-2 mb-3"}),
+                required=False,
+            )
             form.initial[field_name] = manager.employee_id
     return form
 
@@ -6211,10 +6276,28 @@ def multiple_level_approval_edit(request, condition_id):
 @login_required
 @permission_required("base.delete_multipleapprovalcondition")
 def multiple_level_approval_delete(request, condition_id):
+
+    request_copy = request.GET.copy()
+    request_copy.pop("instances_ids", None)
+    previous_data = request_copy.urlencode()
+
     condition = MultipleApprovalCondition.objects.get(id=condition_id)
     condition.delete()
     messages.success(request, _("Multiple approval condition deleted successfully"))
-    return redirect(hx_multiple_approval_condition)
+    hx_target = request.META.get("HTTP_HX_TARGET")
+    if hx_target and hx_target == "genericModalBody":
+        instances_ids = request.GET.get("instances_ids")
+        instances_list = json.loads(instances_ids)
+        if condition_id in instances_list:
+            instances_list.remove(condition_id)
+            previous_instance, next_instance = closest_numbers(
+                json.loads(instances_ids), condition_id
+            )
+        return redirect(
+            f"/detail-view-multiple-approval-condition/{next_instance}/?{previous_data}&instance_ids={instances_list}&deleted=true"
+        )
+
+    return redirect(reverse("hx-multiple-approval-condition"))
 
 
 @login_required
@@ -6753,115 +6836,16 @@ def dashboard_components_toggle(request):
     """
     This function is used to create personalized dashboard charts for employees
     """
-    employee_charts = DashboardEmployeeCharts.objects.get_or_create(
+    employee_charts, created = DashboardEmployeeCharts.objects.get_or_create(
         employee=request.user.employee_get
-    )[0]
+    )
     charts = employee_charts.charts or []
     chart_id = request.GET.get("chart_id")
-    if chart_id and chart_id not in charts:
-        charts.append(chart_id)
+    if chart_id and chart_id in charts:
+        charts.remove(chart_id)
         employee_charts.charts = charts
         employee_charts.save()
     return HttpResponse("")
-
-
-def check_chart_permission(request, charts):
-    """
-    This function is used to check the permissions for the charts
-    Args:
-        charts: dashboard charts
-    """
-    from base.templatetags.basefilters import is_reportingmanager
-
-    if apps.is_installed("recruitment"):
-        from recruitment.templatetags.recruitmentfilters import is_stagemanager
-
-        need_stage_manager = [
-            "hired_candidates",
-            "onboarding_candidates",
-            "recruitment_analytics",
-        ]
-    chart_apps = {
-        "offline_employees": "attendance",
-        "online_employees": "attendance",
-        "overall_leave_chart": "leave",
-        "hired_candidates": "recruitment",
-        "onboarding_candidates": "onboarding",
-        "recruitment_analytics": "recruitment",
-        "attendance_analytic": "attendance",
-        "hours_chart": "attendance",
-        "objective_status": "pms",
-        "key_result_status": "pms",
-        "feedback_status": "pms",
-        "shift_request_approve": "base",
-        "work_type_request_approve": "base",
-        "overtime_approve": "attendance",
-        "attendance_validate": "attendance",
-        "leave_request_approve": "leave",
-        "leave_allocation_approve": "leave",
-        "asset_request_approve": "asset",
-        "employees_chart": "employee",
-        "gender_chart": "employee",
-        "department_chart": "base",
-    }
-    permissions = {
-        "offline_employees": "employee.view_employee",
-        "online_employees": "employee.view_employee",
-        "overall_leave_chart": "leave.view_leaverequest",
-        "hired_candidates": "recruitment.view_candidate",
-        "onboarding_candidates": "recruitment.view_candidate",
-        "recruitment_analytics": "recruitment.view_recruitment",
-        "attendance_analytic": "attendance.view_attendance",
-        "hours_chart": "attendance.view_attendance",
-        "objective_status": "pms.view_employeeobjective",
-        "key_result_status": "pms.view_employeekeyresult",
-        "feedback_status": "pms.view_feedback",
-        "shift_request_approve": "base.change_shiftrequest",
-        "work_type_request_approve": "base.change_worktyperequest",
-        "overtime_approve": "attendance.change_attendance",
-        "attendance_validate": "attendance.change_attendance",
-        "leave_request_approve": "leave.change_leaverequest",
-        "leave_allocation_approve": "leave.change_leaveallocationrequest",
-        "asset_request_approve": "asset.change_assetrequest",
-    }
-    chart_list = []
-    need_reporting_manager = [
-        "offline_employees",
-        "online_employees",
-        "attendance_analytic",
-        "hours_chart",
-        "objective_status",
-        "key_result_status",
-        "feedback_status",
-        "shift_request_approve",
-        "work_type_request_approve",
-        "overtime_approve",
-        "attendance_validate",
-        "leave_request_approve",
-        "leave_allocation_approve",
-        "asset_request_approve",
-    ]
-    for chart in charts:
-        if apps.is_installed(chart_apps.get(chart[0])):
-            if (
-                chart[0] in permissions.keys()
-                or chart[0] in need_reporting_manager
-                or (apps.is_installed("recruitment") and chart[0] in need_stage_manager)
-            ):
-                if request.user.has_perm(permissions[chart[0]]):
-                    chart_list.append(chart)
-                elif chart[0] in need_reporting_manager:
-                    if is_reportingmanager(request.user):
-                        chart_list.append(chart)
-                elif (
-                    apps.is_installed("recruitment") and chart[0] in need_stage_manager
-                ):
-                    if is_stagemanager(request.user):
-                        chart_list.append(chart)
-            else:
-                chart_list.append(chart)
-
-    return chart_list
 
 
 @login_required
@@ -6869,51 +6853,56 @@ def employee_chart_show(request):
     """
     This function is used to choose which chart to show in the dashboard
     """
-    employee_charts = DashboardEmployeeCharts.objects.get_or_create(
+    employee_charts, created = DashboardEmployeeCharts.objects.get_or_create(
         employee=request.user.employee_get
-    )[0]
-    charts = [
-        ("offline_employees", _("Offline Employees")),
-        ("online_employees", _("Online Employees")),
-        ("overall_leave_chart", _("Overall Leave Chart")),
-        ("hired_candidates", _("Hired Candidates")),
-        ("onboarding_candidates", _("Onboarding Candidates")),
-        ("recruitment_analytics", _("Recruitment Analytics")),
-        ("attendance_analytic", _("Attendance analytics")),
-        ("hours_chart", _("Hours Chart")),
-        ("employees_chart", _("Employees Chart")),
-        ("department_chart", _("Department Chart")),
-        ("gender_chart", _("Gender Chart")),
-        ("objective_status", _("Objective Status")),
-        ("key_result_status", _("Key Result Status")),
-        ("feedback_status", _("Feedback Status")),
-        ("shift_request_approve", _("Shift Request to Approve")),
-        ("work_type_request_approve", _("Work Type Request to Approve")),
-        ("overtime_approve", _("Overtime to Approve")),
-        ("attendance_validate", _("Attendance to Validate")),
-        ("leave_request_approve", _("Leave Request to Approve")),
-        ("leave_allocation_approve", _("Leave Allocation to Approve")),
-        ("feedback_answer", _("Feedbacks to Answer")),
-        ("asset_request_approve", _("Asset Request to Approve")),
-    ]
-    charts = check_chart_permission(request, charts)
+    )
+
+    charts = check_chart_permission(request, CHARTS)
 
     if request.method == "POST":
-        employee_charts.charts = []
-        employee_charts.save()
-        data = request.POST
-        for chart in charts:
-            if chart[0] not in data.keys() and chart[0] not in employee_charts.charts:
-                employee_charts.charts.append(chart[0])
-            elif chart[0] in data.keys() and chart[0] in employee_charts.charts:
-                employee_charts.charts.remove(chart[0])
-            else:
-                pass
+        data = set(request.POST.keys())
+        current_order = employee_charts.charts or []
 
+        new_order = [c for c in current_order if c in data]
+
+        for char in data:
+            if char not in new_order:
+                new_order.append(char)
+
+        employee_charts.charts = new_order
         employee_charts.save()
+        messages.success(request, _("Dashboard charts updated successfully"))
+
         return HttpResponse("<script>window.location.reload();</script>")
+
     context = {"dashboard_charts": charts, "employee_chart": employee_charts.charts}
     return render(request, "dashboard_chart_form.html", context)
+
+
+@login_required
+def reorder_dashboard_charts(request):
+    """
+    This function is used to reorder the dashboard charts
+    """
+    employee_charts, created = DashboardEmployeeCharts.objects.get_or_create(
+        employee=request.user.employee_get
+    )
+    charts = [(chart, chart.replace("_", " ")) for chart in employee_charts.charts]
+
+    if request.method == "POST":
+        chart_keys = list(request.POST.keys())
+        filtered_chart_keys = [
+            item for item in chart_keys if item in employee_charts.charts
+        ]
+        employee_charts.charts = filtered_chart_keys
+        employee_charts.save()
+        return HttpResponse(headers={"HX-Refresh": "true"})
+
+    return render(
+        request,
+        "horilla_theme/components/reorder_dashboard_charts.html",
+        {"charts": charts},
+    )
 
 
 @login_required
@@ -7229,6 +7218,8 @@ def holidays_info_import(request):
         "Recurring Field Error": [],
         "Other Errors": [],
     }
+
+    # is_hx_request = request.headers.get('HX-Request') == 'true'
 
     if request.method == "POST":
         file = request.FILES.get("holidays_import")
@@ -7606,9 +7597,49 @@ def view_penalties(request):
     return render(request, "penalty/penalty_view.html", {"records": records})
 
 
-from rest_framework_simplejwt.authentication import JWTAuthentication
-from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
-from rest_framework_simplejwt.tokens import UntypedToken
+@login_required
+@permission_required("base.delete_penaltyaccounts")
+def delete_penalities(request, penalty_id):
+    penalty = PenaltyAccounts.objects.get(id=penalty_id)
+    penalty.delete()
+    messages.success(request, _("Penalty deleted suucessfully"))
+    return HttpResponse(
+        "<script>$('.reload-record').click();$('#reloadMessagesButton').click();</script>"
+    )
+
+
+@method_decorator(login_required, name="dispatch")
+@method_decorator(
+    permission_required("horilla_meet.view_googlecloudcredential"), name="dispatch"
+)
+class EnableIntegrationsView(View):
+    """Handles enabling/disabling Google Meet integration dynamically."""
+
+    def post(self, request, *args, **kwargs):
+        """Handles POST request to enable/disable an integration app."""
+        app_label = request.GET.get("app_label")
+
+        if not app_label:
+            messages.error(request, "Missing app_label")
+            return HttpResponse("<script>window.location.reload()</script>")
+
+        enabled = request.POST.get("is_enabled") is not None
+        integration_app, created = IntegrationApps.objects.update_or_create(
+            app_label=app_label,
+            defaults={"is_enabled": enabled},
+        )
+        try:
+            app_config = apps.get_app_config(app_label)
+            app_verbose_name = app_config.verbose_name
+        except LookupError:
+            app_verbose_name = app_label
+
+        if enabled:
+            messages.success(request, f"{app_verbose_name} enabled")
+        else:
+            messages.error(request, f"{app_verbose_name} disabled")
+
+        return HttpResponse("<script>window.location.reload()</script>")
 
 
 def is_jwt_token_valid(auth_header):

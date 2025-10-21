@@ -71,13 +71,6 @@ status_choices = {
 }
 
 
-def get_language_code(request):
-    scale_x_text = _("Name of Employees")
-    scale_y_text = _("Amount")
-    response = {"scale_x_text": scale_x_text, "scale_y_text": scale_y_text}
-    return JsonResponse(response)
-
-
 @login_required
 @permission_required("payroll.add_contract")
 def contract_create(request):
@@ -123,7 +116,7 @@ def contract_update(request, contract_id, **kwargs):
         if contract_form.is_valid():
             contract_form.save()
             messages.success(request, _("Contract updated"))
-            return redirect(contract_view)
+            return redirect(reverse("view-contract"))
     return render(
         request,
         "payroll/common/form.html",
@@ -469,7 +462,7 @@ def update_payslip_status(request, payslip_id):
     if view:
         from .component_views import filter_payslip
 
-        return redirect(filter_payslip)
+        return redirect(reverse("payslip-list"))
     data = payslip.pay_head_data
     data["employee"] = payslip.employee_id
     data["payslip"] = payslip
@@ -664,7 +657,7 @@ def delete_payslip(request, payslip_id):
         messages.error(request, _("Something went wrong"))
     if not Payslip.objects.filter():
         return HttpResponse("<script>window.location.reload()</script>")
-    return redirect(filter_payslip)
+    return redirect(reverse("payslip-list"))
 
 
 @login_required
@@ -851,18 +844,24 @@ def dashboard_department_chart(request):
         )
 
         for employee in employee_list:
-            department.append(
-                employee.employee_id.employee_work_info.department_id.department
-            )
+            try:
+                department.append(
+                    employee.employee_id.employee_work_info.department_id.department
+                )
+            except Exception as e:
+                print(e)
 
         department = list(set(department))
         for depart in department:
             department_total.append({"department": depart, "amount": 0})
 
         for employee in employee_list:
-            employee_department = (
-                employee.employee_id.employee_work_info.department_id.department
-            )
+            try:
+                employee_department = (
+                    employee.employee_id.employee_work_info.department_id.department
+                )
+            except Exception as e:
+                print(e)
 
             for depart in department_total:
                 if depart["department"] == employee_department:
@@ -1027,22 +1026,9 @@ def payslip_export(request):
                     }
                 )
 
-    emp = request.user.employee_get
+    date_format = request.user.employee_get.get_date_format()
     if employee_payslip_list:
         for payslip in employee_payslip_list:
-            # Taking the company_name of the user
-            info = EmployeeWorkInformation.objects.filter(employee_id=emp).first()
-
-            if info:
-                employee_company = info.company_id
-                company_name = Company.objects.filter(company=employee_company).first()
-                date_format = (
-                    company_name.date_format
-                    if company_name and company_name.date_format
-                    else "MMM. D, YYYY"
-                )
-            else:
-                date_format = "MMM. D, YYYY"
 
             start_date_str = str(payslip.start_date)
             end_date_str = str(payslip.end_date)
@@ -1088,9 +1074,12 @@ def payslip_export(request):
         )
 
     for employee in employee_payslip_list:
-        department.append(
-            employee.employee_id.employee_work_info.department_id.department
-        )
+        try:
+            department.append(
+                employee.employee_id.employee_work_info.department_id.department
+            )
+        except Exception as e:
+            print(e)
 
     department = list(set(department))
 
@@ -1098,9 +1087,12 @@ def payslip_export(request):
         table2_data.append({"Department": depart, "Amount": 0})
 
     for employee in employee_payslip_list:
-        employee_department = (
-            employee.employee_id.employee_work_info.department_id.department
-        )
+        try:
+            employee_department = (
+                employee.employee_id.employee_work_info.department_id.department
+            )
+        except Exception as e:
+            print(e)
 
         for depart in table2_data:
             if depart["Department"] == employee_department:
@@ -1924,8 +1916,10 @@ def delete_auto_payslip(request, auto_id):
 
     """
     try:
+        count = PayslipAutoGenerate.objects.count()
         auto_payslip = PayslipAutoGenerate.objects.get(id=auto_id)
         if not auto_payslip.auto_generate:
+            delete_error = False
             company = (
                 auto_payslip.company_id if auto_payslip.company_id else "All company"
             )
@@ -1934,8 +1928,28 @@ def delete_auto_payslip(request, auto_id):
                 request, _(f"Payslip auto generate for {company} deleted successfully.")
             )
         else:
+            delete_error = True
             messages.info(request, _(f"Active 'Payslip auto generate' cannot delete."))
-        return HttpResponse("<script>window.location.reload();</script>")
     except PayslipAutoGenerate.DoesNotExist:
+        delete_error = True
         messages.error(request, _("Payslip auto generate not found."))
-    return HttpResponseRedirect(request.META.get("HTTP_REFERER", "/"))
+    if delete_error or count == 1:
+        print("==============================================")
+        return HttpResponse("<script>$('.reload-record').click();</script>")
+    return HttpResponse("<script>$('#reloadMessagesButton').click();</script>")
+
+
+@login_required
+def payroll_tab(request, pk, **kwargs):
+    """
+    method for rendering payroll tab
+    """
+
+    employee = Employee.objects.get(id=pk)
+    return render(
+        request,
+        "tabs/payroll-tab.html",
+        {
+            "employee": employee,
+        },
+    )

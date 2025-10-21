@@ -127,22 +127,14 @@ if (keyResultStatusChartCtx != null) {
 				let datasetLabel = e.chart.data.datasets[datasetIndex].label;
 				let value = e.chart.data.datasets[datasetIndex].data[dataIndex];
 				let label = e.chart.data.labels[dataIndex];
-				let params = "?status=" + label + "&archive=false";
-
-				$.ajax({
-					url: "/pms/key-result-view" + params,
-					type: "GET",
-					headers: {
-						"X-Requested-With": "XMLHttpRequest",
-					},
-					success: (response) => {
-						$("#dashboard").html(response);
-					},
-					error: (error, response) => {
-						console.log("Error", error);
-					},
-				});
+				let params = "?field=employee_objective_id__employee_id"+"&status=" + label + "&archive=false"
+				let statusValue = params.split("&")[1].split("=")[1];
+				$('input[name="status"]').val(decodeURIComponent(statusValue));
+				$('#dashboardKeyresult button').click();
 				$("#back_button").removeClass("d-none");
+				$("#employeeKeyRes").removeClass("d-none");
+
+
 			},
 		},
 		plugins: [{
@@ -152,6 +144,7 @@ if (keyResultStatusChartCtx != null) {
 }
 
 function keyResultStatusDataUpdate(data) {
+	console.log('keyresult',data)
 	keyResultStatusData.labels = data.key_result_label;
 	keyResultStatusData.datasets[0].data = data.key_result_value;
 	keyResultStatusData.message = data.message;
