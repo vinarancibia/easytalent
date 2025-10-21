@@ -676,7 +676,7 @@ def register_user(request):
                 user.save()
 
                 # Create or get Company by name (fill other NOT NULL fields with empty strings)
-                company, _ = Company.objects.get_or_create(
+                company, created = Company.objects.get_or_create(
                     company=company_name,
                     defaults={
                         "address": "",
