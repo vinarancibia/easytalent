@@ -153,3 +153,6 @@ whoosh_index/
 
 #PyCharm
 .idea/
+
+# SSH keys
+.sshid_ed25519
