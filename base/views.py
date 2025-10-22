@@ -655,6 +655,111 @@ def login_user(request):
     return render(
         request, "login.html", {"initialize_database": initialize_database_condition()}
     )
+    
+def register_user(request):
+    """
+    Handles user registration and related Employee creation.
+    Also allows creating/selecting a Company by name and links it to the employee's work info.
+    """
+    if request.method == "POST":
+        email = (request.POST.get("email") or "").strip()
+        first_name = (request.POST.get("first_name") or "").strip()
+        last_name = (request.POST.get("last_name") or "").strip()
+        phone = (request.POST.get("phone") or "").strip()
+        company_name = (request.POST.get("company_name") or "").strip()
+        password1 = request.POST.get("password1") or ""
+        password2 = request.POST.get("password2") or ""
+
+        # Basic validations
+        if not email or not first_name or not phone or not company_name or not password1 or not password2:
+            messages.error(request, "Todos los campos requeridos deben ser completados.")
+            return redirect("register")
+
+        if password1 != password2:
+            messages.error(request, "Las contraseñas no coinciden.")
+            return redirect("register")
+
+        if len(password1) < 8:
+            messages.error(request, "La contraseña debe tener al menos 8 caracteres.")
+            return redirect("register")
+
+        # Uniqueness validations
+        if User.objects.filter(username=email).exists():
+            messages.error(request, "Ya existe un usuario con este correo electrónico.")
+            return redirect("register")
+
+        from employee.models import Employee  # avoid circular import
+
+        if Employee.objects.filter(email=email).exists():
+            messages.error(request, "Ya existe un empleado con este correo electrónico.")
+            return redirect("register")
+
+        # Atomic create of User, Company (by name) and Employee
+        from django.db import transaction
+        from base.models import Company
+
+        try:
+            with transaction.atomic():
+                user = User.objects.create_user(
+                    username=email,
+                    email=email,
+                    password=password1,
+                )
+                user.first_name = first_name
+                user.last_name = last_name
+                user.is_active = True
+                user.save()
+
+                # Create or get Company by name (fill other NOT NULL fields with empty strings)
+                company, created = Company.objects.get_or_create(
+                    company=company_name,
+                    defaults={
+                        "address": "",
+                        "country": "",
+                        "state": "",
+                        "city": "",
+                        "zip": "",
+                    },
+                )
+
+                # Create Employee without company_id (removed direct company relation)
+                employee = Employee.objects.create(
+                    employee_user_id=user,
+                    employee_first_name=first_name,
+                    employee_last_name=last_name,
+                    email=email,
+                    phone=phone,
+                )
+
+                # Create EmployeeWorkInformation and link it to the company
+                from employee.models import EmployeeWorkInformation
+                EmployeeWorkInformation.objects.create(
+                    employee_id=employee,
+                    company_id=company,
+                )
+
+                # Default permissions
+                try:
+                    from django.contrib.auth.models import Permission
+                    change_ownprofile = Permission.objects.get(codename="change_ownprofile")
+                    view_ownprofile = Permission.objects.get(codename="view_ownprofile")
+                    user.user_permissions.add(view_ownprofile)
+                    user.user_permissions.add(change_ownprofile)
+                except Exception:
+                    pass
+
+        except Exception as e:
+            messages.error(request, "No se pudo completar el registro. " + str(e))
+            return redirect("register")
+
+        messages.success(request, "Registro exitoso. Ahora puedes iniciar sesión.")
+        return redirect("login")
+
+    return render(
+        request,
+        "register.html",
+        {"initialize_database": initialize_database_condition()},
+    )
 
 
 def include_employee_instance(request, form):

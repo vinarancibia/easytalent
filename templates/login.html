@@ -6,7 +6,7 @@
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Login - {{white_label_company_name}} Dashboard</title>
+    <title>{% trans "Iniciar Sesión" %} - {{white_label_company_name}} Dashboard</title>
     <link rel="apple-touch-icon" sizes="180x180"
         href="{% if white_label_company.icon %}{{white_label_company.icon.url}} {% else %}{% static 'favicons/apple-touch-icon.png' %}{% endif %}">
     <link rel="icon" type="image/png" sizes="32x32"
@@ -29,27 +29,27 @@
         <main class="oh-auth">
             <div class="oh-auth-card mb-4">
                 <h1 class="oh-onboarding-card__title oh-onboarding-card__title--h2 text-center my-3">
-                    {% trans "Sign In" %}
+                    {% trans "Iniciar Sesión" %}
                 </h1>
                 <p class="text-muted text-center">
-                    {% trans "Please login to access the dashboard." %}
+                    {% trans "Por favor inicia sesión para acceder al panel de control." %}
                 </p>
                 <form method="post" class="oh-form-group">
                     {% csrf_token %}
                     <div class="oh-input-group">
-                        <label class="oh-label" for="username">{% trans "Username" %}</label>
+                        <label class="oh-label" for="username">{% trans "Usuario" %}</label>
                         <input type="text" id="username" name="username" class="oh-input w-100"
-                            placeholder="e.g. adam.luis@horilla.com" />
+                            placeholder="{% trans 'ej. adam.luis@horilla.com' %}" />
                     </div>
                     <div class="oh-input-group">
-                        <label class="oh-label" for="password">{% trans "Password" %}</label>
+                        <label class="oh-label" for="password">{% trans "Contraseña" %}</label>
                         <div class="oh-password-input-container">
                             <input type="password" id="password" name="password"
-                                class="oh-input oh-input--password w-100" placeholder="Use alphanumeric characters" />
+                                class="oh-input oh-input--password w-100" placeholder="{% trans 'Usa caracteres alfanuméricos' %}" />
                             <button type="button" class="oh-btn oh-btn--transparent oh-password-input--toggle">
-                                <ion-icon class="oh-passowrd-input__show-icon" title="{% trans 'Show Password' %}"
+                                <ion-icon class="oh-passowrd-input__show-icon" title="{% trans 'Mostrar Contraseña' %}"
                                     name="eye-outline"></ion-icon>
-                                <ion-icon class="oh-passowrd-input__hide-icon d-none" title="{% trans 'Hide Password' %}"
+                                <ion-icon class="oh-passowrd-input__hide-icon d-none" title="{% trans 'Ocultar Contraseña' %}"
                                     name="eye-off-outline"></ion-icon>
                             </button>
                         </div>
@@ -58,12 +58,17 @@
                         class="oh-btn oh-onboarding-card__button mt-4 oh-btn--secondary oh-btn--shadow w-100 mb-4"
                         role="button">
                         <ion-icon class="me-2" name="lock-closed-outline"></ion-icon>
-                        {% trans "Secure Sign-in" %}
+                        {% trans "Iniciar Sesión Seguro" %}
                     </button>
                     {% if not initialize_database %}
                         <small class="text-center">
                             <a href="{% url 'forgot-password' %}" class="oh-link oh-link--secondary justify-content-center">
-                                {% trans "Forgot password" %}?
+                                {% trans "¿Olvidaste tu contraseña?" %}?
+                            </a>
+                        </small>
+                        <small class="text-center d-block">
+                            <a href="{% url 'register' %}" class="oh-link oh-link--secondary justify-content-center">
+                                {% trans "¿No tienes una cuenta? Créala" %}
                             </a>
                         </small>
                     {% endif %}
@@ -77,14 +82,14 @@
                                 background-color: rgba(229, 79, 56, 0.1);
                                 color: hsl(8, 77%, 56%);
                                 ">
-                                {% trans "Initialize Database" %}
+                                {% trans "Inicializar Base de Datos" %}
                                 <ion-icon class="ms-2" name="arrow-forward-outline"></ion-icon>
                             </a>
                             <a
                                 onclick="$('#dataLoadAuthentication').toggleClass('oh-modal--show');"
                                 class="oh-btn oh-onboarding-card__button mt-4 oh-btn--secondary oh-btn--shadow w-100 mb-4"
                                 style="background-color: #31b46e1f; color: #1fad61" role="button">
-                                {% trans "Load Demo Data" %}
+                                {% trans "Cargar Datos de Demostración" %}
                                 <ion-icon class="ms-2" name="arrow-forward-outline"></ion-icon>
                             </a>
                         </div>
@@ -114,16 +119,14 @@
     </div>
     <script src="{% static '/build/js/web.frontend.min.js' %}"></script>
     <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
-    {% comment %} <script type="module" src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.esm.js"></script>
-    <script nomodule src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.js"></script> {% endcomment %}
     <script type="module"  src="{% static 'images/ionicons/ui_icons/ionicons/ionicons.esm.js' %}"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@10"></script>
     <script>
         $(document).ready(function () {
             if ($(".oh-alert--warning").length > 0) {
                 Swal.fire({
-                    title: 'Access Denied !',
-                    text: 'Your login credentials are currently blocked. Please contact HR administrators for assistance.',
+                    title: '{% trans "¡Acceso Denegado!" %}',
+                    text: '{% trans "Tus credenciales de inicio de sesión están actualmente bloqueadas. Por favor contacta a los administradores de RRHH para asistencia." %}',
                     icon: 'warning',
                     confirmButtonText: 'OK',
                 });

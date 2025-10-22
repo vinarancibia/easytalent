@@ -29,26 +29,15 @@ env = environ.Env(
         str,
         "django-insecure-j8op9)1q8$1&0^s&p*_0%d#pr@w9qj@1o=3#@d=a(^@9@zd@%j",
     ),
-    ALLOWED_HOSTS=(
-        list,
-        [
-            '127.0.0.1',
-            'localhost',
-            '144.208.66.171',
-            'easytalent.top',
-            'www.easytalent.top'
-        ]
-    ),
+    ALLOWED_HOSTS=(list, ["*"]),
     CSRF_TRUSTED_ORIGINS=(
         list,
         [
-            'http://localhost:8000',
-            'http://127.0.0.1:8000',
-            'https://easytalent.top',
-            'https://www.easytalent.top',
-            'http://144.208.66.171:8000',
-            'https://144.208.66.171'
-        ]
+            "http://localhost:8000",
+            "http://127.0.0.1:8000",
+            "https://easytalent.top",
+            "https://www.easytalent.top",
+        ],
     ),
 )
 

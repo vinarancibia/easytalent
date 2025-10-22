@@ -197,6 +197,7 @@ urlpatterns = [
     ),
     path("404", views.custom404, name="404"),
     path("login/", views.login_user, name="login"),
+    path("register/", views.register_user, name="register"),
     path(
         "forgot-password",
         views.HorillaPasswordResetView.as_view(),
@@ -527,12 +528,12 @@ urlpatterns = [
     ),
     path(
         "rotating-work-type-create-form/",
-        rotating_work_type.RotatingWorkTypesCreateForm.as_view(),
+        settings_rotatingwork.RotatingWorkTypesCreateForm.as_view(),
         name="rotating-work-type-create-form",
     ),
     path(
         "rotating-work-type-update-form/<int:pk>",
-        rotating_work_type.RotatingWorkTypesCreateForm.as_view(),
+        settings_rotatingwork.RotatingWorkTypesCreateForm.as_view(),
         name="rotating-work-type-update-form",
     ),
     path(
@@ -787,7 +788,7 @@ urlpatterns = [
     # ),
     path(
         "rotating-shift-create/",
-        rotating_shift_assign.RotatingShiftTypeCreateFormView.as_view(),
+        rotating_shift.RotatingShiftTypeCreateFormView.as_view(),
         name="rotating-shift-create",
     ),
     path(
@@ -825,7 +826,7 @@ urlpatterns = [
     # ),
     path(
         "settings/rotating-shift-update/<int:pk>/",
-        rotating_shift_assign.RotatingShiftTypeCreateFormView.as_view(),
+        rotating_shift.RotatingShiftTypeCreateFormView.as_view(),
         name="rotating-shift-update",
     ),
     path(
