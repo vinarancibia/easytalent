@@ -656,6 +656,7 @@ def login_user(request):
         request, "login.html", {"initialize_database": initialize_database_condition()}
     )
     
+
 def register_user(request):
     """
     Handles user registration and related Employee creation.
@@ -733,20 +734,129 @@ def register_user(request):
 
                 # Create EmployeeWorkInformation and link it to the company
                 from employee.models import EmployeeWorkInformation
-                EmployeeWorkInformation.objects.create(
+                work_info, created = EmployeeWorkInformation.objects.get_or_create(
                     employee_id=employee,
-                    company_id=company,
+                    defaults={
+                        'company_id': company,
+                        'email': email  # Agregar el email en EmployeeWorkInformation
+                    }
                 )
 
-                # Default permissions
+                # Permisos de administrador para gestión completa de la empresa
                 try:
                     from django.contrib.auth.models import Permission
-                    change_ownprofile = Permission.objects.get(codename="change_ownprofile")
-                    view_ownprofile = Permission.objects.get(codename="view_ownprofile")
-                    user.user_permissions.add(view_ownprofile)
-                    user.user_permissions.add(change_ownprofile)
-                except Exception:
-                    pass
+                    
+                    # Lista completa de permisos para administrador de empresa
+                    admin_permissions = [
+                        # Permisos básicos del perfil
+                        "change_ownprofile",
+                        "view_ownprofile",
+                        
+                        # Permisos de empleados (CRUD completo)
+                        "employee.view_employee",
+                        "employee.add_employee", 
+                        "employee.change_employee",
+                        "employee.delete_employee",
+                        
+                        # Permisos de asistencias
+                        "attendance.view_attendance",
+                        "attendance.add_attendance",
+                        "attendance.change_attendance",
+                        "attendance.delete_attendance",
+                        
+                        # Permisos de solicitudes de permiso
+                        "leave.view_leaverequest",
+                        "leave.add_leaverequest",
+                        "leave.change_leaverequest",
+                        "leave.delete_leaverequest",
+                        "leave.view_leavetype",
+                        "leave.add_leavetype",
+                        "leave.change_leavetype",
+                        "leave.delete_leavetype",
+                        
+                        # Permisos de empresa
+                        "base.view_company",
+                        "base.add_company",
+                        "base.change_company",
+                        "base.delete_company",
+                        
+                        # Permisos de departamentos
+                        "base.view_department",
+                        "base.add_department",
+                        "base.change_department",
+                        "base.delete_department",
+                        
+                        # Permisos de posiciones de trabajo
+                        "base.view_jobposition",
+                        "base.add_jobposition",
+                        "base.change_jobposition",
+                        "base.delete_jobposition",
+                        
+                        # Permisos de roles de trabajo
+                        "base.view_jobrole",
+                        "base.add_jobrole",
+                        "base.change_jobrole",
+                        "base.delete_jobrole",
+                        
+                        # Permisos de tipos de empleado
+                        "base.view_employeetype",
+                        "base.add_employeetype",
+                        "base.change_employeetype",
+                        "base.delete_employeetype",
+                        
+                        # Permisos de tipos de trabajo
+                        "base.view_worktype",
+                        "base.add_worktype",
+                        "base.change_worktype",
+                        "base.delete_worktype",
+                        
+                        # Permisos de turnos
+                        "base.view_employeeshift",
+                        "base.add_employeeshift",
+                        "base.change_employeeshift",
+                        "base.delete_employeeshift",
+                        
+                        # Permisos de configuración y settings
+                        "auth.view_permission",
+                        "auth.view_group",
+                        "base.view_holiday",
+                        "base.add_holiday",
+                        "base.change_holiday",
+                        "base.delete_holiday",
+                    ]
+                    
+                    # Obtener y asignar todos los permisos
+                    permissions = []
+                    for perm_codename in admin_permissions:
+                        try:
+                            permission = Permission.objects.get(codename=perm_codename)
+                            permissions.append(permission)
+                        except Permission.DoesNotExist:
+                            # Si el permiso no existe, continuar con los demás
+                            continue
+                    
+                    # Asignar todos los permisos al usuario
+                    user.user_permissions.set(permissions)
+                    
+                except Exception as e:
+                    # Si hay algún error obteniendo permisos, asignar al menos los básicos
+                    try:
+                        change_ownprofile = Permission.objects.get(codename="change_ownprofile")
+                        view_ownprofile = Permission.objects.get(codename="view_ownprofile")
+                        user.user_permissions.add(view_ownprofile)
+                        user.user_permissions.add(change_ownprofile)
+                    except Exception:
+                        pass
+
+                # Configurar la sesión para que el usuario vea solo su empresa
+                # Esto es crucial para el filtrado correcto
+                request.session["selected_company"] = str(company.id)
+                request.session["selected_company_instance"] = {
+                    "company": company.company,
+                    "icon": getattr(company.icon, 'url', '/static/images/ui/default_company.png'),
+                    "text": "My Company",
+                    "id": company.id,
+                }
 
         except Exception as e:
             messages.error(request, "No se pudo completar el registro. " + str(e))
