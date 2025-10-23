@@ -742,13 +742,13 @@ def register_user(request):
                     }
                 )
 
-                # Permisos de administrador para gestión completa de la empresa
+                # Permisos completos de administrador para gestión de la empresa
                 try:
                     from django.contrib.auth.models import Permission
                     
                     # Lista completa de permisos para administrador de empresa
                     admin_permissions = [
-                        # Permisos básicos del perfil
+                        # Permisos básicos del perfil (necesarios para ver opciones del perfil)
                         "change_ownprofile",
                         "view_ownprofile",
                         
@@ -757,6 +757,16 @@ def register_user(request):
                         "employee.add_employee", 
                         "employee.change_employee",
                         "employee.delete_employee",
+                        
+                        # Permisos específicos del perfil (necesarios para "My Profile")
+                        "employee.view_profile",
+                        "employee.change_profile",
+                        
+                        # Permisos de conducta y disciplina
+                        "employee.view_disciplinaryaction",
+                        "employee.add_disciplinaryaction",
+                        "employee.change_disciplinaryaction",
+                        "employee.delete_disciplinaryaction",
                         
                         # Permisos de asistencias
                         "attendance.view_attendance",
@@ -774,7 +784,7 @@ def register_user(request):
                         "leave.change_leavetype",
                         "leave.delete_leavetype",
                         
-                        # Permisos de empresa
+                        # Permisos de empresa (necesarios para configuraciones)
                         "base.view_company",
                         "base.add_company",
                         "base.change_company",
@@ -816,13 +826,51 @@ def register_user(request):
                         "base.change_employeeshift",
                         "base.delete_employeeshift",
                         
-                        # Permisos de configuración y settings
+                        # Permisos de configuración y settings (CRÍTICOS para ver configuraciones)
                         "auth.view_permission",
                         "auth.view_group",
+                        "auth.add_permission",
+                        "auth.change_permission",
+                        "auth.delete_permission",
+                        "auth.add_group",
+                        "auth.change_group",
+                        "auth.delete_group",
+                        
+                        # Permisos de holidays y configuraciones generales
                         "base.view_holiday",
                         "base.add_holiday",
                         "base.change_holiday",
                         "base.delete_holiday",
+                        
+                        # Permisos de tags y etiquetas
+                        "base.view_tags",
+                        "base.add_tags",
+                        "base.change_tags",
+                        "base.delete_tags",
+                        
+                        # Permisos de empleados tags
+                        "employee.view_emplyeetag",
+                        "employee.add_emplyeetag",
+                        "employee.change_emplyeetag",
+                        "employee.delete_emplyeetag",
+                        
+                        # Permisos de auditoría
+                        "horilla_audit.view_audittag",
+                        "horilla_audit.add_audittag",
+                        "horilla_audit.change_audittag",
+                        "horilla_audit.delete_audittag",
+                        
+                        # Permisos de configuración de email
+                        "base.view_horillamailtemplates",
+                        "base.add_horillamailtemplates",
+                        "base.change_horillamailtemplates",
+                        "base.delete_horillamailtemplates",
+                        
+                        # Permisos de configuraciones de permisos de usuario
+                        "view_permissions",
+                        "add_permissions",
+                        "change_permissions",
+                        "delete_permissions",
                     ]
                     
                     # Obtener y asignar todos los permisos
