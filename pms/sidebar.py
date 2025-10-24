@@ -7,43 +7,43 @@ from django.utils.translation import gettext_lazy as trans
 
 from base.templatetags.basefilters import is_reportingmanager
 
-MENU = trans("Performance")
+MENU = trans("Rendimiento")
 IMG_SRC = "images/ui/pms.svg"
 
 
 SUBMENUS = [
     {
-        "menu": trans("Dashboard"),
+        "menu": trans("Panel de Control"),
         "redirect": reverse_lazy("dashboard-view"),
     },
     {
-        "menu": trans("Objectives"),
+        "menu": trans("Objetivos"),
         "redirect": reverse_lazy("objective-list-view"),
     },
     {
-        "menu": trans("360 Feedback"),
+        "menu": trans("Retroalimentación 360°"),
         "redirect": reverse_lazy("feedback-view"),
     },
     {
-        "menu": trans("Meetings"),
+        "menu": trans("Reuniones"),
         "redirect": reverse_lazy("view-meetings"),
     },
     {
-        "menu": trans("Key Results"),
+        "menu": trans("Resultados Clave"),
         "redirect": reverse_lazy("view-key-result"),
         "accessibility": "pms.sidebar.key_result_accessibility",
     },
     {
-        "menu": trans("Employee Bonus Point"),
+        "menu": trans("Puntos de Bonificación"),
         "redirect": reverse_lazy("employee-bonus-point"),
     },
     {
-        "menu": trans("Period"),
+        "menu": trans("Período"),
         "redirect": reverse_lazy("period-view"),
         "accessibility": "pms.sidebar.period_accessibility",
     },
     {
-        "menu": trans("Question Template"),
+        "menu": trans("Plantilla de Preguntas"),
         "redirect": reverse_lazy("question-template-view"),
         "accessibility": "pms.sidebar.question_template_accessibility",
     },
