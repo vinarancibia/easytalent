@@ -10,18 +10,18 @@ from django.utils.translation import gettext_lazy as _
 
 from onboarding.templatetags.onboardingfilters import is_taskmanager
 
-MENU = _("Onboarding")
+MENU = _("Incorporación")
 ACCESSIBILITY = "onboarding.sidebar.menu_accessibilty"
 IMG_SRC = "images/ui/rocket.svg"
 
 SUBMENUS = [
     {
-        "menu": _("Onboarding view"),
+        "menu": _("Vista de Incorporación"),
         "redirect": reverse("cbv-pipeline-onboarding") + "?closed=false",
         "accessibility": "onboarding.sidebar.onboarding_view_accessibility",
     },
     {
-        "menu": _("Candidates view"),
+        "menu": _("Vista de Candidatos"),
         "redirect": reverse("candidates-view"),
         "accessibility": "onboarding.sidebar.candidates_view_accessibility",
     },

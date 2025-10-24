@@ -16,28 +16,28 @@ from project.methods import (
     has_subordinates,
 )
 
-MENU = _("Project")
+MENU = _("Proyecto")
 IMG_SRC = "images/ui/project.png"
 ACCESSIBILITY = "project.sidebar.menu_accessibilty"
 
 SUBMENUS = [
     {
-        "menu": _("Dashboard"),
+        "menu": _("Panel de Control"),
         "redirect": reverse("project-dashboard-view"),
         "accessibility": "project.sidebar.dashboard_accessibility",
     },
     {
-        "menu": _("Projects"),
+        "menu": _("Proyectos"),
         "redirect": reverse("project-view"),
         "accessibility": "project.sidebar.project_accessibility",
     },
     {
-        "menu": _("Tasks"),
+        "menu": _("Tareas"),
         "redirect": reverse("task-all"),
         "accessibility": "project.sidebar.task_accessibility",
     },
     {
-        "menu": _("Timesheet"),
+        "menu": _("Hoja de Tiempo"),
         "redirect": reverse("view-time-sheet"),
         "accessibility": "project.sidebar.timesheet_accessibility",
     },
