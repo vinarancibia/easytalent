@@ -698,6 +698,8 @@ def register_user(request):
         # Atomic create of User, Company (by name) and Employee
         from django.db import transaction
         from base.models import Company
+        from employee.models import Department, EmployeeType
+        from datetime import date
 
         try:
             with transaction.atomic():
@@ -709,185 +711,84 @@ def register_user(request):
                 user.first_name = first_name
                 user.last_name = last_name
                 user.is_active = True
+                user.is_staff = True  # Hacer al usuario staff para acceso al admin
+                user.is_superuser = False  # NO hacer superuser
                 user.save()
 
-                # Create or get Company by name (fill other NOT NULL fields with empty strings)
+                # Create or get Company by name with default values
                 company, created = Company.objects.get_or_create(
                     company=company_name,
                     defaults={
                         "address": "",
-                        "country": "",
+                        "country": "Bolivia",  # País por defecto
                         "state": "",
-                        "city": "",
+                        "city": "Santa Cruz",  # Ciudad por defecto
                         "zip": "",
+                        "hq": True,  # Marcar como HQ para que sea la empresa principal
+                        "icon": "base/icon/horilla-logo.png",  # Icono por defecto
                     },
                 )
 
-                # Create Employee without company_id (removed direct company relation)
+                # Create Employee with default values
                 employee = Employee.objects.create(
                     employee_user_id=user,
                     employee_first_name=first_name,
                     employee_last_name=last_name,
                     email=email,
                     phone=phone,
+                    country="Bolivia",  # Valor por defecto
+                    city="Santa Cruz",  # Valor por defecto
                 )
 
-                # Create EmployeeWorkInformation and link it to the company
+                # Obtener departamento y tipo de empleado por defecto
+                default_department = Department.objects.filter(id=6).first()
+                default_employee_type = EmployeeType.objects.filter(id=2).first()
+
+                # Create EmployeeWorkInformation with all required fields
                 from employee.models import EmployeeWorkInformation
                 work_info, created = EmployeeWorkInformation.objects.get_or_create(
-                    employee_id=employee,
                     defaults={
-                        'company_id': company,
-                        'email': email  # Agregar el email en EmployeeWorkInformation
+                        "employee_id": employee,
+                        "company_id": company,
+                        "location": "Bolivia",
+                        "email": email,
+                        "mobile": phone,
+                        "date_joining": date.today(),
+                        "basic_salary": 0,
+                        "salary_hour": 0,
+                        "additional_info": "",
+                        "experience": 0,
+                        "department_id": default_department,
+                        "employee_type_id": default_employee_type,
                     }
                 )
+                if not created:
+                    work_info.employee_id = employee
+                    work_info.company_id = company
+                    work_info.location = "Bolivia"
+                    work_info.email = email
+                    work_info.mobile = phone
+                    work_info.date_joining = date.today()
+                    work_info.basic_salary = 0
+                    work_info.salary_hour = 0
+                    work_info.additional_info = ""
+                    work_info.experience = 0
+                    work_info.department_id = default_department
+                    work_info.employee_type_id = default_employee_type
+                    work_info.save()
 
-                # Permisos completos de administrador para gestión de la empresa
+                # Asignar TODOS los permisos de superadmin pero limitados a su empresa
                 try:
                     from django.contrib.auth.models import Permission
                     
-                    # Lista completa de permisos para administrador de empresa
-                    admin_permissions = [
-                        # Permisos básicos del perfil (necesarios para ver opciones del perfil)
-                        "change_ownprofile",
-                        "view_ownprofile",
-                        
-                        # Permisos de empleados (CRUD completo)
-                        "employee.view_employee",
-                        "employee.add_employee", 
-                        "employee.change_employee",
-                        "employee.delete_employee",
-                        
-                        # Permisos específicos del perfil (necesarios para "My Profile")
-                        "employee.view_profile",
-                        "employee.change_profile",
-                        
-                        # Permisos de conducta y disciplina
-                        "employee.view_disciplinaryaction",
-                        "employee.add_disciplinaryaction",
-                        "employee.change_disciplinaryaction",
-                        "employee.delete_disciplinaryaction",
-                        
-                        # Permisos de asistencias
-                        "attendance.view_attendance",
-                        "attendance.add_attendance",
-                        "attendance.change_attendance",
-                        "attendance.delete_attendance",
-                        
-                        # Permisos de solicitudes de permiso
-                        "leave.view_leaverequest",
-                        "leave.add_leaverequest",
-                        "leave.change_leaverequest",
-                        "leave.delete_leaverequest",
-                        "leave.view_leavetype",
-                        "leave.add_leavetype",
-                        "leave.change_leavetype",
-                        "leave.delete_leavetype",
-                        
-                        # Permisos de empresa (necesarios para configuraciones)
-                        "base.view_company",
-                        "base.add_company",
-                        "base.change_company",
-                        "base.delete_company",
-                        
-                        # Permisos de departamentos
-                        "base.view_department",
-                        "base.add_department",
-                        "base.change_department",
-                        "base.delete_department",
-                        
-                        # Permisos de posiciones de trabajo
-                        "base.view_jobposition",
-                        "base.add_jobposition",
-                        "base.change_jobposition",
-                        "base.delete_jobposition",
-                        
-                        # Permisos de roles de trabajo
-                        "base.view_jobrole",
-                        "base.add_jobrole",
-                        "base.change_jobrole",
-                        "base.delete_jobrole",
-                        
-                        # Permisos de tipos de empleado
-                        "base.view_employeetype",
-                        "base.add_employeetype",
-                        "base.change_employeetype",
-                        "base.delete_employeetype",
-                        
-                        # Permisos de tipos de trabajo
-                        "base.view_worktype",
-                        "base.add_worktype",
-                        "base.change_worktype",
-                        "base.delete_worktype",
-                        
-                        # Permisos de turnos
-                        "base.view_employeeshift",
-                        "base.add_employeeshift",
-                        "base.change_employeeshift",
-                        "base.delete_employeeshift",
-                        
-                        # Permisos de configuración y settings (CRÍTICOS para ver configuraciones)
-                        "auth.view_permission",
-                        "auth.view_group",
-                        "auth.add_permission",
-                        "auth.change_permission",
-                        "auth.delete_permission",
-                        "auth.add_group",
-                        "auth.change_group",
-                        "auth.delete_group",
-                        
-                        # Permisos de holidays y configuraciones generales
-                        "base.view_holiday",
-                        "base.add_holiday",
-                        "base.change_holiday",
-                        "base.delete_holiday",
-                        
-                        # Permisos de tags y etiquetas
-                        "base.view_tags",
-                        "base.add_tags",
-                        "base.change_tags",
-                        "base.delete_tags",
-                        
-                        # Permisos de empleados tags
-                        "employee.view_emplyeetag",
-                        "employee.add_emplyeetag",
-                        "employee.change_emplyeetag",
-                        "employee.delete_emplyeetag",
-                        
-                        # Permisos de auditoría
-                        "horilla_audit.view_audittag",
-                        "horilla_audit.add_audittag",
-                        "horilla_audit.change_audittag",
-                        "horilla_audit.delete_audittag",
-                        
-                        # Permisos de configuración de email
-                        "base.view_horillamailtemplates",
-                        "base.add_horillamailtemplates",
-                        "base.change_horillamailtemplates",
-                        "base.delete_horillamailtemplates",
-                        
-                        # Permisos de configuraciones de permisos de usuario
-                        "view_permissions",
-                        "add_permissions",
-                        "change_permissions",
-                        "delete_permissions",
-                    ]
-                    
-                    # Obtener y asignar todos los permisos
-                    permissions = []
-                    for perm_codename in admin_permissions:
-                        try:
-                            permission = Permission.objects.get(codename=perm_codename)
-                            permissions.append(permission)
-                        except Permission.DoesNotExist:
-                            # Si el permiso no existe, continuar con los demás
-                            continue
+                    # Obtener TODOS los permisos disponibles
+                    all_permissions = Permission.objects.all()
                     
                     # Asignar todos los permisos al usuario
-                    user.user_permissions.set(permissions)
+                    user.user_permissions.set(all_permissions)
                     
                 except Exception as e:
-                    # Si hay algún error obteniendo permisos, asignar al menos los básicos
+                    # Si hay algún error obteniendo permisos, al menos asignar los básicos
                     try:
                         change_ownprofile = Permission.objects.get(codename="change_ownprofile")
                         view_ownprofile = Permission.objects.get(codename="view_ownprofile")
@@ -897,12 +798,11 @@ def register_user(request):
                         pass
 
                 # Configurar la sesión para que el usuario vea solo su empresa
-                # Esto es crucial para el filtrado correcto
                 request.session["selected_company"] = str(company.id)
                 request.session["selected_company_instance"] = {
                     "company": company.company,
-                    "icon": getattr(company.icon, 'url', '/static/images/ui/default_company.png'),
-                    "text": "My Company",
+                    "icon": company.icon.url if company.icon else "/static/favicons/android-chrome-192x192.png",
+                    "text": "Mi Empresa",
                     "id": company.id,
                 }
 

@@ -31,11 +31,11 @@ class AllCompany:
     """
 
     class Urls:
-        url = "https://ui-avatars.com/api/?name=All+Company&background=random"
+        url = "/static/favicons/android-chrome-192x192.png"
 
-    company = "All Company"
+    company = "Todas las Empresas"
     icon = Urls()
-    text = "All companies"
+    text = "Todas las empresas"
     id = None
 
 
@@ -52,15 +52,32 @@ def get_companies(request):
     """
     This method will return the history additional field form
     """
+    # Si el usuario no es superuser, solo mostrar su empresa
+    if not request.user.is_superuser and hasattr(request.user, 'employee_get'):
+        user_company = request.user.employee_get.get_company()
+        if user_company:
+            # Usar el icono de la empresa si existe, sino el por defecto
+            company_icon = user_company.icon.url if user_company.icon else "/static/favicons/android-chrome-192x192.png"
+            companies = [
+                [
+                    str(user_company.id),
+                    user_company.company,
+                    company_icon,
+                    True,
+                ],
+            ]
+            return {"all_companies": companies, "company_selected": True}
+    
+    # Para superusers, mostrar todas las empresas
     companies = list(
-        [company.id, company.company, company.icon.url, False]
+        [company.id, company.company, company.icon.url if company.icon else "/static/favicons/android-chrome-192x192.png", False]
         for company in Company.objects.all()
     )
     companies = [
         [
             "all",
-            "All Company",
-            "https://ui-avatars.com/api/?name=All+Company&background=random",
+            "Todas las Empresas",
+            "/static/favicons/android-chrome-192x192.png",
             False,
         ],
     ] + companies
@@ -111,9 +128,9 @@ def update_selected_company(request):
                 getattr(employee, "employee_work_info", None), "company_id", None
             )
             if emp_company != company:
-                text = "Other Company"
+                text = "Otra Empresa"
                 if company_id == user_company:
-                    text = "My Company"
+                    text = "Mi Empresa"
                 company = {
                     "company": company.company,
                     "icon": company.icon.url,
@@ -121,7 +138,7 @@ def update_selected_company(request):
                     "id": company.id,
                 }
                 messages.error(
-                    request, _("Employee is not working in the selected company.")
+                    request, _("El empleado no está trabajando en la empresa seleccionada.")
                 )
                 request.session["selected_company_instance"] = company
                 return HttpResponse(
@@ -131,11 +148,11 @@ def update_selected_company(request):
                 )
 
     if company_id == "all":
-        text = "All companies"
+        text = "Todas las empresas"
     elif company_id == user_company:
-        text = "My Company"
+        text = "Mi Empresa"
     else:
-        text = "Other Company"
+        text = "Otra Empresa"
 
     company = {
         "company": company.company,
@@ -170,12 +187,12 @@ def white_labelling_company(request):
             company = hq
 
         return {
-            "white_label_company_name": company.company if company else "Horilla",
+            "white_label_company_name": company.company if company else "EasyTalent",
             "white_label_company": company,
         }
     else:
         return {
-            "white_label_company_name": "Horilla",
+            "white_label_company_name": "EasyTalent",
             "white_label_company": None,
         }
 
