@@ -747,8 +747,8 @@ def register_user(request):
                 # Create EmployeeWorkInformation with all required fields
                 from employee.models import EmployeeWorkInformation
                 work_info, created = EmployeeWorkInformation.objects.get_or_create(
+                    employee_id=employee,
                     defaults={
-                        "employee_id": employee,
                         "company_id": company,
                         "location": "Bolivia",
                         "email": email,
